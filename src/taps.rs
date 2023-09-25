@@ -2,7 +2,7 @@
 //! client to interact with one selected TAP as if it were the only TAP in the chain, so that the
 //! client doesn't have to deal with putting the other TAPs into bypass and shifting data through
 //! the bypass registers.
-use crate::statemachine::{JtagSM, Register};
+use crate::statemachine::{JtagSM, JtagState, Register};
 
 fn add_ones_to_end(input: &[u8], this_len: usize, shift: usize) -> Vec<u8> {
     let bytes = shift / 8;
@@ -140,6 +140,7 @@ impl Taps {
         }
         let ir = add_ones_to_end(ir, this_irlen, pad_bits);
         self.sm.write_reg(Register::Instruction, &ir, total_bits as u8, true);
+        self.sm.change_mode(JtagState::Idle);
     }
 
     /// Read the instruction register of the TAP selected by `select_tap`
@@ -152,6 +153,7 @@ impl Taps {
         }
 
         // Discard the unwanted bits
+        self.sm.change_mode(JtagState::Idle);
         self.sm.read_reg(Register::Instruction, pad_bits);
         self.sm.read_reg(Register::Instruction, this_irlen)
     }
@@ -169,6 +171,7 @@ impl Taps {
         }
         let dr = add_ones_to_end(dr, this_len, pad_bits);
         self.sm.write_reg(Register::Data, &dr, total_bits as u8, true);
+        self.sm.change_mode(JtagState::Idle);
     }
 
     /// Read the data register of the TAP selected by `select_tap`.  `bits` indicates the length of
@@ -178,6 +181,7 @@ impl Taps {
         let pad_bits = self.taps.len() - self.active - 1;
 
         // Discard the bypass bits
+        self.sm.change_mode(JtagState::Idle);
         self.sm.read_reg(Register::Data, pad_bits);
         self.sm.read_reg(Register::Data, bits)
     }
