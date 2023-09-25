@@ -4,13 +4,11 @@
 //! the bypass registers.
 use crate::statemachine::{JtagSM, Register};
 
-fn add_ones_to_end(input: &[u8], mut shift: usize) -> Vec<u8> {
+fn add_ones_to_end(input: &[u8], this_len: usize, shift: usize) -> Vec<u8> {
     let bytes = shift / 8;
-    shift %= 8;
-    shift = 8 - shift;
     let mut output = input.to_vec();
 
-    let top_bits = (1 << shift) - 1;
+    let top_bits = (1 << this_len % 8) - 1;
     let end = output.len()-1;
     output[end] |= !top_bits;
 
@@ -140,7 +138,7 @@ impl Taps {
         if total_bits == 0 {
             total_bits = 8;
         }
-        let ir = add_ones_to_end(ir, pad_bits);
+        let ir = add_ones_to_end(ir, this_irlen, pad_bits);
         self.sm.write_reg(Register::Instruction, &ir, total_bits as u8, true);
     }
 
@@ -169,7 +167,7 @@ impl Taps {
         if total_bits == 0 {
             total_bits = 8;
         }
-        let dr = add_ones_to_end(dr, pad_bits);
+        let dr = add_ones_to_end(dr, this_len, pad_bits);
         self.sm.write_reg(Register::Data, &dr, total_bits as u8, true);
     }
 
