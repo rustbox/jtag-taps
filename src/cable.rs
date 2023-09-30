@@ -1,6 +1,7 @@
 //! Implementations for different JTAG hardware adapters will here.  Hardware adapters should
 //! implement the `Cable` trait.
 pub mod jtagkey;
+pub mod ft232r;
 
 pub trait Cable {
     /// Clock out a series of TMS values to change the state of the JTAG chain.  Each element of
