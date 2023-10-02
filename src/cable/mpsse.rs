@@ -2,7 +2,7 @@
 use crate::cable::Cable;
 
 use libftd2xx::{Ft2232h, Ftdi, FtdiMpsse, MpsseCmdBuilder, MpsseCmdExecutor};
-use ftdi_mpsse::ClockTMSOut;
+use ftdi_mpsse::{ClockTMSOut, ClockTMS};
 use libftd2xx::{ClockData, ClockDataOut, ClockBits, ClockBitsOut};
 
 pub struct Mpsse<T> {
@@ -77,18 +77,17 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
     fn write_data(&mut self, data: &[u8], mut bits: u8, pause_after: bool)
     {
         let mut builder = MpsseCmdBuilder::new();
-        //
-        // We will send the last bit using clock_tms
         assert!(bits <= 8);
         assert!(bits != 0);
 
+        // We will send the last bit using clock_tms
         bits -= 1;
 
         if data.len() > 1 {
             builder = builder.clock_data_out(ClockDataOut::LsbNeg, &data[..data.len()-1]);
         }
         let last_byte = data[data.len()-1];
-        if bits > 1 {
+        if bits >= 1 {
             builder = builder.clock_bits_out(ClockBitsOut::LsbNeg, last_byte, bits);
         }
         let last_bit = last_byte & (1 << bits) != 0;
@@ -102,8 +101,56 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
         self.ft.send(builder.as_slice()).expect("send");
     }
 
-    fn read_write_data(&mut self, _data: &[u8], _bits: u8, _pause_after: bool) -> Vec<u8> {
-        unimplemented!();
+    fn read_write_data(&mut self, data: &[u8], mut bits: u8, pause_after: bool) -> Vec<u8> {
+        let mut read_bytes = 1;
+        let mut builder = MpsseCmdBuilder::new();
+
+        assert!(bits <= 8);
+        assert!(bits != 0);
+
+        // We will send the last bit using clock_tms
+        bits -= 1;
+
+        if data.len() > 1 {
+            builder = builder.clock_data(ClockData::LsbPosIn, &data[..data.len()-1]);
+            read_bytes += data.len()-1;
+        }
+        let last_byte = data[data.len()-1];
+        if bits >= 1 {
+            builder = builder.clock_bits(ClockBits::LsbPosIn, last_byte, bits);
+            read_bytes += 1;
+        }
+        let last_bit = last_byte & (1 << bits) != 0;
+
+        // Change to pause state
+        if pause_after {
+            builder = builder.clock_tms(ClockTMS::NegTMSPosTDO, 1, last_bit, 1);
+            read_bytes += 1;
+        }
+        builder = builder.clock_tms(ClockTMS::NegTMSPosTDO, 0, last_bit, 1);
+
+        let mut buf = vec![0; read_bytes];
+        self.ft.xfer(builder.as_slice(), &mut buf).expect("send");
+
+        // We don't care about the bit we read on the second mode transition
+        if pause_after {
+            buf.pop();
+        }
+
+        // Last read of a single bit will be in MSB position.  We want it in LSB position.
+        let len = buf.len();
+        buf[len-1] >>= 7;
+
+        if bits >= 1 {
+            // Shift the bits from clock_bits
+            buf[len-2] >>= 8 - bits;
+
+            // Need to repack the bit from clock_tms into the bits from clock_bits
+            let last_recv = buf[len-1] & 1;
+            buf[len-2] |=  last_recv << bits;
+            buf.pop();
+        }
+        buf
     }
 }
 
@@ -136,9 +183,9 @@ impl JtagKey {
             "Dual RS232-HS B"
         };
         let ft = Ftdi::with_description(description).expect("new");
-        let mut ft = Ft2232h::try_from(ft).expect("try");
-        ft.set_gpio_upper(PIN_N_TRST | PIN_N_SRST, UPPER_OUTPUT_PINS).expect("pins");
+        let ft = Ft2232h::try_from(ft).expect("try");
         let mut ft = Mpsse::new(ft, clock);
+        ft.ft.set_gpio_upper(PIN_N_TRST | PIN_N_SRST, UPPER_OUTPUT_PINS).expect("pins");
 
         let builder = MpsseCmdBuilder::new()
             .set_gpio_lower(PIN_TMS, LOWER_OUTPUT_PINS);
