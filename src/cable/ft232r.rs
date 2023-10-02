@@ -38,7 +38,7 @@ impl Ft232r {
 
     fn select_bit(mut recv: Vec<u8>, tdi: u8) -> Vec<u8> {
         let mut recv_bits = vec![];
-        let mut byte = 0 as u8;
+        let mut byte = 0_u8;
         let mut bit = 0;
 
         // convert bytes to bits
@@ -59,7 +59,7 @@ impl Ft232r {
                 bit = 0;
             }
 
-            if recv.len() == 0 {
+            if recv.is_empty() {
                 break;
             }
         }

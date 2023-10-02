@@ -9,13 +9,12 @@ fn add_ones_to_end(input: &[u8], this_len: usize, shift: usize) -> Vec<u8> {
     let bytes = shift / 8;
     let mut output = input.to_vec();
 
-    let top_bits = (1 << this_len % 8) - 1;
+    let top_bits = (1 << (this_len % 8)) - 1;
     let end = output.len()-1;
     output[end] |= !top_bits;
 
-    for _ in 0..bytes {
-        output.push(0xff);
-    }
+    let mut pad = vec![0xff; bytes];
+    output.append(&mut pad);
     output
 }
 
