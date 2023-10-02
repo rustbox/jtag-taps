@@ -3,6 +3,7 @@
 //! client doesn't have to deal with putting the other TAPs into bypass and shifting data through
 //! the bypass registers.
 use crate::statemachine::{JtagSM, JtagState, Register};
+use crate::cable::Cable;
 
 fn add_ones_to_end(input: &[u8], this_len: usize, shift: usize) -> Vec<u8> {
     let bytes = shift / 8;
@@ -22,15 +23,15 @@ struct Tap {
     irlen: usize,
 }
 
-pub struct Taps {
-    pub sm: JtagSM,
+pub struct Taps<T> {
+    pub sm: JtagSM<T>,
     taps: Vec<Tap>,
     active: usize,
 }
 
-impl Taps {
+impl<T: std::ops::DerefMut<Target=dyn Cable>> Taps<T> {
     /// Create an object using an existing `JtagSM` object
-    pub fn new(sm: JtagSM) -> Self {
+    pub fn new(sm: JtagSM<T>) -> Self {
         Self {
             sm,
             taps: Vec::new(),

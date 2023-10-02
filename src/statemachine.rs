@@ -56,15 +56,15 @@ impl Path {
     }
 }
 
-pub struct JtagSM {
-    pub cable: Box<dyn Cable>,
+pub struct JtagSM<T> {
+    pub cable: T,
     state: JtagState,
     graph: Vec<Node>,
 }
 
-impl JtagSM {
+impl<T: std::ops::DerefMut<Target=dyn Cable>> JtagSM<T> {
     /// Create a JTAG state machine using an existing `Cable`
-    pub fn new(mut cable: Box<dyn Cable>) -> Self {
+    pub fn new(mut cable: T) -> Self {
         let mut reset = Node::new();
         let mut idle = Node::new();
         let mut selectdr = Node::new();
