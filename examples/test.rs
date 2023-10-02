@@ -1,10 +1,10 @@
-use jtag_taps::cable::jtagkey::JtagKey;
+use jtag_taps::cable;
 use jtag_taps::statemachine::JtagSM;
 use jtag_taps::taps::Taps;
 
 fn main() {
-    let cable = JtagKey::new("Dual RS232-HS A", 1 << 20);
-    let jtag = JtagSM::new(Box::new(cable));
+    let cable = cable::new_from_string("jtagkey", 1 << 20).expect("cable");
+    let jtag = JtagSM::new(cable);
     let mut taps = Taps::new(jtag);
     taps.detect();
 
