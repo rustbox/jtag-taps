@@ -1,6 +1,6 @@
 //! Implementations for different JTAG hardware adapters will here.  Hardware adapters should
 //! implement the `Cable` trait.
-pub mod jtagkey;
+pub mod mpsse;
 pub mod ft232r;
 
 pub trait Cable {
