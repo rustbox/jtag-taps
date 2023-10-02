@@ -5,61 +5,32 @@ use libftd2xx::{Ft2232h, Ftdi, FtdiMpsse, MpsseCmdBuilder, MpsseCmdExecutor};
 use ftdi_mpsse::ClockTMSOut;
 use libftd2xx::{ClockData, ClockDataOut, ClockBits, ClockBitsOut};
 
-// Lower pins
-const PIN_TCK: u8 = 1;
-const PIN_TDI: u8 = 1 << 1;
-//const PIN_TDO: u8 = 1 << 2;
-const PIN_TMS: u8 = 1 << 3;
-const PIN_N_OE: u8 = 1 << 4;
-const LOWER_OUTPUT_PINS: u8 = PIN_TCK | PIN_TDI | PIN_TMS | PIN_N_OE;
-
-// Upper pins
-const PIN_N_TRST: u8 = 1;
-const PIN_N_SRST: u8 = 1 << 1;
-const PIN_N_TRST_OE: u8 = 1 << 2;
-const PIN_N_SRST_OE: u8 = 1 << 3;
-const UPPER_OUTPUT_PINS: u8 = PIN_N_TRST | PIN_N_SRST | PIN_N_TRST_OE | PIN_N_SRST_OE;
-
-pub struct JtagKey {
-    ft: Ft2232h,
+pub struct Mpsse<T> {
+    ft: T,
 }
 
-impl JtagKey {
-    /// Create a new JtagKey.  `description` is the value passed to `Ftd::with_description` to
-    /// select which hardware to use.  FT2232-based adapters will have both an "A" interface and a
-    /// "B" interface.  `clock` controls the speed of TCLK in hertz.
-    pub fn new(description: &str, clock: u32) -> Self {
-        let ft = Ftdi::with_description(description).expect("new");
-        let mut ft = Ft2232h::try_from(ft).expect("try");
-
+impl<T: FtdiMpsse + MpsseCmdExecutor> Mpsse<T>
+    where <T as MpsseCmdExecutor>::Error: std::fmt::Debug
+{
+    pub fn new(mut ft: T, clock: u32) -> Self
+    {
         ft.initialize_mpsse_default().expect("init");
-        ft.set_gpio_upper(PIN_N_TRST | PIN_N_SRST, UPPER_OUTPUT_PINS).expect("pins");
         ft.set_clock(clock).expect("set clock");
 
         let builder = MpsseCmdBuilder::new()
             .disable_3phase_data_clocking()
-            .disable_adaptive_data_clocking()
-            .set_gpio_lower(PIN_TMS, LOWER_OUTPUT_PINS);
+            .disable_adaptive_data_clocking();
         ft.send(builder.as_slice()).expect("send");
 
-        JtagKey {
-            ft
+        Self {
+            ft,
         }
-    }
-
-    /// JtagKey adapters implement the option SRST signal.  This function puts the system in reset.
-    pub fn assert_srst(&mut self) {
-        self.ft.set_gpio_upper(PIN_N_TRST, UPPER_OUTPUT_PINS).expect("pins");
-    }
-
-    /// JtagKey adapters implement the option SRST signal.  This function takes the system out of
-    /// reset.
-    pub fn dessert_srst(&mut self) {
-        self.ft.set_gpio_upper(PIN_N_TRST | PIN_N_SRST, UPPER_OUTPUT_PINS).expect("pins");
     }
 }
 
-impl Cable for JtagKey {
+impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
+    where <T as MpsseCmdExecutor>::Error: std::fmt::Debug
+{
     fn change_mode(&mut self, tms: &[usize], tdo: bool) {
         let mut count = 0;
         let mut buf = 0;
@@ -131,7 +102,79 @@ impl Cable for JtagKey {
         self.ft.send(builder.as_slice()).expect("send");
     }
 
-    fn read_write_data(&mut self, data: &[u8], bits: u8, pause_after: bool) -> Vec<u8> {
+    fn read_write_data(&mut self, _data: &[u8], _bits: u8, _pause_after: bool) -> Vec<u8> {
         unimplemented!();
+    }
+}
+
+// Lower pins
+const PIN_TCK: u8 = 1;
+const PIN_TDI: u8 = 1 << 1;
+//const PIN_TDO: u8 = 1 << 2;
+const PIN_TMS: u8 = 1 << 3;
+const PIN_N_OE: u8 = 1 << 4;
+const LOWER_OUTPUT_PINS: u8 = PIN_TCK | PIN_TDI | PIN_TMS | PIN_N_OE;
+
+// Upper pins
+const PIN_N_TRST: u8 = 1;
+const PIN_N_SRST: u8 = 1 << 1;
+const PIN_N_TRST_OE: u8 = 1 << 2;
+const PIN_N_SRST_OE: u8 = 1 << 3;
+const UPPER_OUTPUT_PINS: u8 = PIN_N_TRST | PIN_N_SRST | PIN_N_TRST_OE | PIN_N_SRST_OE;
+
+pub struct JtagKey {
+    ft: Mpsse<Ft2232h>,
+}
+
+impl JtagKey {
+    /// Create a new JtagKey.  FT2232-based adapters like JtagKey have both an "A" interface and a
+    /// "B" interface.  `primary` controls which to use. `clock` controls the speed of TCLK in hertz.
+    pub fn new(clock: u32, primary: bool) -> Self {
+        let description = if primary {
+            "Dual RS232-HS A"
+        } else {
+            "Dual RS232-HS B"
+        };
+        let ft = Ftdi::with_description(description).expect("new");
+        let mut ft = Ft2232h::try_from(ft).expect("try");
+        ft.set_gpio_upper(PIN_N_TRST | PIN_N_SRST, UPPER_OUTPUT_PINS).expect("pins");
+        let mut ft = Mpsse::new(ft, clock);
+
+        let builder = MpsseCmdBuilder::new()
+            .set_gpio_lower(PIN_TMS, LOWER_OUTPUT_PINS);
+        ft.ft.send(builder.as_slice()).expect("send");
+
+        JtagKey {
+            ft
+        }
+    }
+
+    /// JtagKey adapters implement the option SRST signal.  This function puts the system in reset.
+    pub fn assert_srst(&mut self) {
+        self.ft.ft.set_gpio_upper(PIN_N_TRST, UPPER_OUTPUT_PINS).expect("pins");
+    }
+
+    /// JtagKey adapters implement the option SRST signal.  This function takes the system out of
+    /// reset.
+    pub fn dessert_srst(&mut self) {
+        self.ft.ft.set_gpio_upper(PIN_N_TRST | PIN_N_SRST, UPPER_OUTPUT_PINS).expect("pins");
+    }
+}
+
+impl Cable for JtagKey {
+    fn change_mode(&mut self, tms: &[usize], tdo: bool) {
+        self.ft.change_mode(tms, tdo)
+    }
+
+    fn read_data(&mut self, bits: usize) -> Vec<u8> {
+        self.ft.read_data(bits)
+    }
+
+    fn write_data(&mut self, data: &[u8], bits: u8, pause_after: bool) {
+        self.ft.write_data(data, bits, pause_after)
+    }
+
+    fn read_write_data(&mut self, data: &[u8], bits: u8, pause_after: bool) -> Vec<u8> {
+        self.ft.read_write_data(data, bits, pause_after)
     }
 }
