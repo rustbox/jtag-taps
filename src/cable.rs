@@ -19,3 +19,13 @@ pub trait Cable {
 
     fn read_write_data(&mut self, data: &[u8], bits: u8, pause_after: bool) -> Vec<u8>;
 }
+
+/// Helper function for constructing a cable from a string.  This is expected to be used by CLI
+/// utilities where the cable is passed in as an argument, rather than constructed by code.
+pub fn new_from_string(name: &str, clock: u32) -> Result<Box<dyn Cable>,String> {
+    match name {
+        "jtagkey" => Ok(Box::new(mpsse::JtagKey::new(clock, true))),
+        "ef3" => Ok(Box::new(ft232r::Ft232r::easyflash3(clock))),
+        _ => Err(format!("unknown cable type: {}", name)),
+    }
+}
