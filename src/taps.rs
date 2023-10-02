@@ -154,7 +154,9 @@ impl Taps {
 
         // Discard the unwanted bits
         self.sm.change_mode(JtagState::Idle);
-        self.sm.read_reg(Register::Instruction, pad_bits);
+        if pad_bits > 0 {
+            self.sm.read_reg(Register::Instruction, pad_bits);
+        }
         self.sm.read_reg(Register::Instruction, this_irlen)
     }
 
@@ -182,7 +184,9 @@ impl Taps {
 
         // Discard the bypass bits
         self.sm.change_mode(JtagState::Idle);
-        self.sm.read_reg(Register::Data, pad_bits);
+        if pad_bits > 0 {
+            self.sm.read_reg(Register::Data, pad_bits);
+        }
         self.sm.read_reg(Register::Data, bits)
     }
 }
