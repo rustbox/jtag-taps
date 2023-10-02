@@ -15,4 +15,6 @@ pub trait Cable {
     /// Should be called with state = ShiftIR or ShiftDR.  State won't change unless `pause_after`
     /// is true, in which case it will be PauseIR or PauseDR on exit.
     fn write_data(&mut self, data: &[u8], bits: u8, pause_after: bool);
+
+    fn read_write_data(&mut self, data: &[u8], bits: u8, pause_after: bool) -> Vec<u8>;
 }

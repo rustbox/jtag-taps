@@ -109,6 +109,8 @@ impl Cable for JtagKey {
         //
         // We will send the last bit using clock_tms
         assert!(bits <= 8);
+        assert!(bits != 0);
+
         bits -= 1;
 
         if data.len() > 1 {
@@ -127,5 +129,9 @@ impl Cable for JtagKey {
         }
 
         self.ft.send(builder.as_slice()).expect("send");
+    }
+
+    fn read_write_data(&mut self, data: &[u8], bits: u8, pause_after: bool) -> Vec<u8> {
+        unimplemented!();
     }
 }
