@@ -2,6 +2,7 @@
 //! implement the `Cable` trait.
 pub mod mpsse;
 pub mod ft232r;
+pub mod usbblaster;
 
 pub trait Cable {
     /// Clock out a series of TMS values to change the state of the JTAG chain.  Each element of
@@ -26,6 +27,7 @@ pub fn new_from_string(name: &str, clock: u32) -> Result<Box<dyn Cable>,String> 
     match name {
         "jtagkey" => Ok(Box::new(mpsse::JtagKey::new(clock, true))),
         "ef3" => Ok(Box::new(ft232r::Ft232r::easyflash3(clock))),
+        "usbblaster" => Ok(Box::new(usbblaster::UsbBlaster::new())),
         _ => Err(format!("unknown cable type: {}", name)),
     }
 }
