@@ -176,6 +176,25 @@ impl<T: std::ops::DerefMut<Target=dyn Cable>> Taps<T> {
         self.sm.change_mode(JtagState::Idle);
     }
 
+    /// Shift `dr` into the data register of the TAP selected by `select_tap`.  `bits` indicates
+    /// how many bits of the final byte should be written (a value of 8 will
+    /// write the entire byte).  Returns the bits that were shifted out while `dr` was
+    /// shifted in.
+    pub fn read_write_dr(&mut self, dr: &[u8], bits: usize) -> Vec<u8> {
+        assert!(self.active < self.taps.len());
+        let this_len = (dr.len() - 1) * 8 + bits;
+        let pad_bits = self.active;
+
+        let mut total_bits = (pad_bits + this_len) % 8;
+        if total_bits == 0 {
+            total_bits = 8;
+        }
+        let dr = add_ones_to_end(dr, this_len, pad_bits);
+        let data = self.sm.read_write_reg(Register::Data, &dr, total_bits as u8, true);
+        self.sm.change_mode(JtagState::Idle);
+        data
+    }
+
     /// Read the data register of the TAP selected by `select_tap`.  `bits` indicates the length of
     /// the data register for the current instruction.
     pub fn read_dr(&mut self, bits: usize) -> Vec<u8> {
