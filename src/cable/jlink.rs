@@ -173,7 +173,7 @@ impl Cable for JLink {
         self.read_write_data(data, bits, pause_after);
     }
 
-    fn read_write_data(&mut self, data: &[u8], mut bits: u8, pause_after: bool) -> Vec<u8> {
+    fn read_write_data(&mut self, data: &[u8], bits: u8, pause_after: bool) -> Vec<u8> {
         let mut total_bits = (data.len()-1) * 8 + (bits as usize);
 
         let mut tms = vec![0; data.len()];
