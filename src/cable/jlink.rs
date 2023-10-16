@@ -8,6 +8,10 @@ use rusb::constants::*;
 
 pub struct JLink {
     device: DeviceHandle<GlobalContext>,
+    // queued bytes to send
+    buffer: Vec<u8>,
+    // number of bytes we'll receive after sending the above
+    recv_bytes: usize,
     read_endpoint: u8,
     write_endpoint: u8,
 }
@@ -45,6 +49,8 @@ impl JLink {
 
                 let mut jlink = Self {
                     device,
+                    buffer: vec![],
+                    recv_bytes: 0,
                     read_endpoint,
                     write_endpoint,
                 };
@@ -61,22 +67,36 @@ impl JLink {
         panic!("no jlink attached");
     }
 
-    fn send_command(&mut self, cmd: u8, mut data: Vec<u8>) -> Result<(),rusb::Error> {
+    fn send_command(&mut self, cmd: u8, mut data: Vec<u8>) {
         data.insert(0, cmd);
-        let len = self.device.write_bulk(self.write_endpoint, &data, Duration::from_millis(100))?;
-        assert_eq!(len, data.len());
-        Ok(())
+        self.buffer.append(&mut data);
     }
 
     fn read_data(&mut self, len: usize) -> Result<Vec<u8>, rusb::Error> {
-        let mut data = vec![0; len];
-        let len = self.device.read_bulk(self.read_endpoint, &mut data, Duration::from_millis(100))?;
-        assert_eq!(len, data.len());
+        // Submit any pending writes
+        let wr = self.device.write_bulk(self.write_endpoint, &mut self.buffer, Duration::from_millis(100))?;
+        assert_eq!(wr, self.buffer.len());
+        self.buffer.clear();
+
+        let mut recv_bytes = len + self.recv_bytes;
+        let mut data = vec![];
+
+        while recv_bytes > 0 {
+            let mut buffer = vec![0; recv_bytes];
+            let len = self.device.read_bulk(self.read_endpoint, &mut buffer, Duration::from_millis(100))?;
+            buffer.resize(len, 0);
+            data.append(&mut buffer);
+            recv_bytes -= len;
+        }
+
+        // Don't return any of the data from the pending write that we didn't care about
+        let data = data.split_off(self.recv_bytes);
+        self.recv_bytes = 0;
         Ok(data)
     }
 
     pub fn get_status(&mut self) -> Vec<u8> {
-        self.send_command(0x7, vec![]).expect("status");
+        self.send_command(0x7, vec![]);
         let data = self.read_data(8).expect("read status");
 
         let vref = ((data[0] as u16) + (data[1] as u16)) << 8;
@@ -89,41 +109,62 @@ impl JLink {
     pub fn set_clock(&mut self, mut clock: u32) {
         clock /= 1000;
         let buf = vec![(clock & 0xff) as u8, ((clock >> 8) & 0xff) as u8];
-        self.send_command(0x5, buf).expect("set clock");
+        self.send_command(0x5, buf);
     }
 
     pub fn set_interface(&mut self, intf: u8) {
         let buf = vec![intf];
-        self.send_command(0xc7, buf).expect("set interface");
+        self.send_command(0xc7, buf);
         let _ = self.read_data(4).expect("set interface response");
     }
 
     pub fn assert_srst(&mut self) {
-        self.send_command(0xdc, vec![]).expect("assert srst");
+        self.send_command(0xdc, vec![]);
     }
 
     pub fn deassert_srst(&mut self) {
-        self.send_command(0xdd, vec![]).expect("deassert srst");
+        self.send_command(0xdd, vec![]);
     }
 
     pub fn assert_trst(&mut self) {
-        self.send_command(0xde, vec![]).expect("assert trst");
+        self.send_command(0xde, vec![]);
     }
 
     pub fn deassert_trst(&mut self) {
-        self.send_command(0xdf, vec![]).expect("deassert trst");
+        self.send_command(0xdf, vec![]);
     }
 
-    fn tap_sequence(&mut self, mut tms: Vec<u8>, mut tdo: Vec<u8>, bits: usize) -> Result<Vec<u8>, rusb::Error> {
+    fn tap_sequence(&mut self, mut tms: Vec<u8>, mut tdo: Vec<u8>, bits: usize) {
         assert_eq!(tms.len(), tdo.len());
         assert!(tms.len() < 390);
-        let bytes = tms.len();
         let mut cmdbuf = vec![(bits & 0xff) as u8, ((bits >> 8) & 0xff) as u8];
         cmdbuf.append(&mut tms);
         cmdbuf.append(&mut tdo);
 
-        self.send_command(0xcd, cmdbuf)?;
-        self.read_data(bytes)
+        self.send_command(0xcd, cmdbuf);
+    }
+
+    fn send_tdo(&mut self, data: &[u8], bits: u8, pause_after: bool) -> usize {
+        let mut total_bits = (data.len()-1) * 8 + (bits as usize);
+
+        let mut tms = vec![0; data.len()];
+        let mut data = data.to_vec();
+
+        if pause_after {
+            let len = tms.len();
+            tms[len-1] |= 1 << (bits-1);
+
+            // Add an extra clock for the transition to pause state
+            if total_bits % 8 == 0 {
+                data.push(0xff);
+                tms.push(0);
+            }
+            total_bits += 1;
+        }
+
+        let bytes = data.len();
+        self.tap_sequence(tms, data, total_bits);
+        bytes
     }
 }
 
@@ -153,7 +194,10 @@ impl Cable for JLink {
             vec![0; buf.len()]
         };
 
-        self.tap_sequence(buf, tdo_bytes, tms.len()).expect("change mode");
+        let bytes = tdo_bytes.len();
+        self.tap_sequence(buf, tdo_bytes, tms.len());
+        // We don't care about the returned bytes, so read them whenever we do the next read
+        self.recv_bytes += bytes;
     }
 
     fn read_data(&mut self, mut bits: usize) -> Vec<u8> {
@@ -168,27 +212,17 @@ impl Cable for JLink {
     }
 
     fn write_data(&mut self, data: &[u8], bits: u8, pause_after: bool) {
-        self.read_write_data(data, bits, pause_after);
+        let bytes = self.send_tdo(data, bits, pause_after);
+        // We don't care about the returned bytes, so read them whenever we do the next read
+        self.recv_bytes += bytes;
     }
 
     fn read_write_data(&mut self, data: &[u8], bits: u8, pause_after: bool) -> Vec<u8> {
-        let mut total_bits = (data.len()-1) * 8 + (bits as usize);
+        let bytes = self.send_tdo(data, bits, pause_after);
+        self.read_data(bytes).expect("read_write read")
+    }
 
-        let mut tms = vec![0; data.len()];
-        let mut data = data.to_vec();
-
-        if pause_after {
-            let len = tms.len();
-            tms[len-1] |= 1 << (bits-1);
-
-            // Add an extra clock for the transition to pause state
-            if total_bits % 8 == 0 {
-                data.push(0xff);
-                tms.push(0);
-            }
-            total_bits += 1;
-        }
-
-        self.tap_sequence(tms, data, total_bits).expect("read write data")
+    fn flush(&mut self) {
+        self.read_data(0).expect("flush");
     }
 }
