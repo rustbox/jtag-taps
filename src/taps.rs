@@ -28,7 +28,10 @@ pub struct Taps<T> {
     active: usize,
 }
 
-impl<T: std::ops::DerefMut<Target=dyn Cable>> Taps<T> {
+impl<T, U> Taps<T>
+    where T: std::ops::DerefMut<Target=U>,
+          U: Cable + ?Sized
+{
     /// Create an object using an existing `JtagSM` object
     pub fn new(sm: JtagSM<T>) -> Self {
         Self {

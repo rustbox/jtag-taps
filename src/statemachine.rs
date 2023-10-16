@@ -62,7 +62,10 @@ pub struct JtagSM<T> {
     graph: Vec<Node>,
 }
 
-impl<T: std::ops::DerefMut<Target=dyn Cable>> JtagSM<T> {
+impl<T, U> JtagSM<T>
+    where T: std::ops::DerefMut<Target=U>,
+          U: Cable + ?Sized
+{
     /// Create a JTAG state machine using an existing `Cable`
     pub fn new(mut cable: T) -> Self {
         let mut reset = Node::new();
