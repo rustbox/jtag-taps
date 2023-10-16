@@ -24,8 +24,6 @@ impl JLink {
                             continue;
                 }
 
-                println!("found it");
-
                 let mut read_endpoint = None;
                 let mut write_endpoint = None;
                 for e in d.endpoint_descriptors() {
