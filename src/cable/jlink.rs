@@ -65,7 +65,7 @@ impl JLink {
 
     fn send_command(&mut self, cmd: u8, mut data: Vec<u8>) -> Result<(),rusb::Error> {
         data.insert(0, cmd);
-        let len = self.device.write_bulk(self.write_endpoint, &mut data, Duration::from_millis(100))?;
+        let len = self.device.write_bulk(self.write_endpoint, &data, Duration::from_millis(100))?;
         assert_eq!(len, data.len());
         Ok(())
     }
@@ -81,7 +81,7 @@ impl JLink {
         self.send_command(0x7, vec![]).expect("status");
         let data = self.read_data(8).expect("read status");
 
-        let vref = (data[0] as u16) + (data[1] as u16) << 8;
+        let vref = ((data[0] as u16) + (data[1] as u16)) << 8;
         if vref < 15000 {
             panic!("vref too low, possibly unpowered or disconnected");
         }
@@ -133,8 +133,8 @@ impl Cable for JLink {
     fn change_mode(&mut self, tms: &[usize], tdo: bool) {
         let mut buf = vec![];
         let mut byte = 0u8;
-        for i in 0..tms.len() {
-            if tms[i] != 0 {
+        for (i, x) in tms.iter().enumerate() {
+            if *x != 0 {
                 byte |= 1 << (i % 8);
             }
             if i % 8 == 7 {

@@ -13,6 +13,12 @@ pub struct UsbBlaster {
 
 const READ_CMD: u8 = 1 << 6;
 
+impl Default for UsbBlaster {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UsbBlaster {
     /// Create a new UsbBlaster.
     pub fn new() -> Self {
