@@ -22,8 +22,8 @@ pub struct JLink {
     write_endpoint: u8,
 }
 
-fn bit_append (dst: &mut Vec<u8>, mut dst_bits: usize, src: &mut Vec<u8>, src_bits: usize, src_skip: usize) {
-    let mut byte = if dst.len() > 0 && dst_bits % 8 != 0 {
+fn bit_append (dst: &mut Vec<u8>, mut dst_bits: usize, src: &mut [u8], src_bits: usize, src_skip: usize) {
+    let mut byte = if !dst.is_empty() && dst_bits % 8 != 0 {
         dst.pop().unwrap()
     } else {
         0
@@ -108,7 +108,7 @@ impl JLink {
     fn read_data(&mut self, len: usize) -> Result<Vec<u8>, rusb::Error> {
         // Submit any pending writes
         self.flush_tap_sequence();
-        let wr = self.device.write_bulk(self.write_endpoint, &mut self.buffer, Duration::from_millis(100))?;
+        let wr = self.device.write_bulk(self.write_endpoint, &self.buffer, Duration::from_millis(100))?;
         assert_eq!(wr, self.buffer.len());
         self.buffer.clear();
 
@@ -180,7 +180,7 @@ impl JLink {
     fn flush_tap_sequence(&mut self) {
         assert_eq!(self.tms_buf.len(), self.tdo_buf.len());
         assert!(self.tms_buf.len() < 390);
-        if self.tms_buf.len() > 0 {
+        if !self.tms_buf.is_empty() {
             let bytes = self.tms_buf.len();
             let mut cmdbuf = vec![0xcd, (self.send_bits & 0xff) as u8, ((self.send_bits >> 8) & 0xff) as u8];
             cmdbuf.append(&mut self.tms_buf);
