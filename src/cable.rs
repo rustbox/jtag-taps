@@ -19,7 +19,15 @@ pub trait Cable {
     /// is true, in which case it will be PauseIR or PauseDR on exit.
     fn write_data(&mut self, data: &[u8], bits: u8, pause_after: bool);
 
+    /// Shift out bits on the TDI line.  `bits` is the number of bits to send from the last byte.
+    /// Should be called with state = ShiftIR or ShiftDR.  State won't change unless `pause_after`
+    /// is true, in which case it will be PauseIR or PauseDR on exit.  Also captures and returns
+    /// the bits that were shifted in from TDO
     fn read_write_data(&mut self, data: &[u8], bits: u8, pause_after: bool) -> Vec<u8>;
+
+    /// If the cable implements any queueing, flush to hardware.
+    fn flush(&mut self) {
+    }
 }
 
 /// Helper function for constructing a cable from a string.  This is expected to be used by CLI
