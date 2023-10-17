@@ -12,8 +12,37 @@ pub struct JLink {
     buffer: Vec<u8>,
     // number of bytes we'll receive after sending the above
     recv_bytes: usize,
+    // queued tms changes
+    tms_buf: Vec<u8>,
+    // queued tdo changes
+    tdo_buf: Vec<u8>,
+    // number of bits in the above
+    send_bits: usize,
     read_endpoint: u8,
     write_endpoint: u8,
+}
+
+fn bit_append (dst: &mut Vec<u8>, mut dst_bits: usize, src: &mut Vec<u8>, src_bits: usize, src_skip: usize) {
+    let mut byte = if dst.len() > 0 && dst_bits % 8 != 0 {
+        dst.pop().unwrap()
+    } else {
+        0
+    };
+
+    for i in src_skip..src_bits {
+        if src[i / 8] & (1 << (i % 8)) != 0{
+            byte |= 1 << (dst_bits % 8);
+        }
+
+        dst_bits += 1;
+        if dst_bits % 8 == 0 {
+            dst.push(byte);
+            byte = 0;
+        }
+    }
+    if dst_bits % 8 != 0 {
+        dst.push(byte);
+    }
 }
 
 impl JLink {
@@ -50,6 +79,9 @@ impl JLink {
                 let mut jlink = Self {
                     device,
                     buffer: vec![],
+                    tms_buf: vec![],
+                    tdo_buf: vec![],
+                    send_bits: 0,
                     recv_bytes: 0,
                     read_endpoint,
                     write_endpoint,
@@ -68,12 +100,14 @@ impl JLink {
     }
 
     fn send_command(&mut self, cmd: u8, mut data: Vec<u8>) {
+        self.flush_tap_sequence();
         data.insert(0, cmd);
         self.buffer.append(&mut data);
     }
 
     fn read_data(&mut self, len: usize) -> Result<Vec<u8>, rusb::Error> {
         // Submit any pending writes
+        self.flush_tap_sequence();
         let wr = self.device.write_bulk(self.write_endpoint, &mut self.buffer, Duration::from_millis(100))?;
         assert_eq!(wr, self.buffer.len());
         self.buffer.clear();
@@ -137,14 +171,29 @@ impl JLink {
     fn tap_sequence(&mut self, mut tms: Vec<u8>, mut tdo: Vec<u8>, bits: usize) {
         assert_eq!(tms.len(), tdo.len());
         assert!(tms.len() < 390);
-        let mut cmdbuf = vec![(bits & 0xff) as u8, ((bits >> 8) & 0xff) as u8];
-        cmdbuf.append(&mut tms);
-        cmdbuf.append(&mut tdo);
 
-        self.send_command(0xcd, cmdbuf);
+        bit_append(&mut self.tms_buf, self.send_bits, &mut tms, bits, 0);
+        bit_append(&mut self.tdo_buf, self.send_bits, &mut tdo, bits, 0);
+        self.send_bits += bits;
     }
 
-    fn send_tdo(&mut self, data: &[u8], bits: u8, pause_after: bool) -> usize {
+    fn flush_tap_sequence(&mut self) {
+        assert_eq!(self.tms_buf.len(), self.tdo_buf.len());
+        assert!(self.tms_buf.len() < 390);
+        if self.tms_buf.len() > 0 {
+            let bytes = self.tms_buf.len();
+            let mut cmdbuf = vec![0xcd, (self.send_bits & 0xff) as u8, ((self.send_bits >> 8) & 0xff) as u8];
+            cmdbuf.append(&mut self.tms_buf);
+            cmdbuf.append(&mut self.tdo_buf);
+            self.send_bits = 0;
+
+            self.buffer.append(&mut cmdbuf);
+            // queue bytes for later read, rather than reading them now
+            self.recv_bytes += bytes;
+        }
+    }
+
+    fn send_tdo(&mut self, data: &[u8], bits: u8, pause_after: bool) {
         let mut total_bits = (data.len()-1) * 8 + (bits as usize);
 
         let mut tms = vec![0; data.len()];
@@ -162,9 +211,7 @@ impl JLink {
             total_bits += 1;
         }
 
-        let bytes = data.len();
         self.tap_sequence(tms, data, total_bits);
-        bytes
     }
 }
 
@@ -194,10 +241,7 @@ impl Cable for JLink {
             vec![0; buf.len()]
         };
 
-        let bytes = tdo_bytes.len();
         self.tap_sequence(buf, tdo_bytes, tms.len());
-        // We don't care about the returned bytes, so read them whenever we do the next read
-        self.recv_bytes += bytes;
     }
 
     fn read_data(&mut self, mut bits: usize) -> Vec<u8> {
@@ -212,14 +256,28 @@ impl Cable for JLink {
     }
 
     fn write_data(&mut self, data: &[u8], bits: u8, pause_after: bool) {
-        let bytes = self.send_tdo(data, bits, pause_after);
-        // We don't care about the returned bytes, so read them whenever we do the next read
-        self.recv_bytes += bytes;
+        self.send_tdo(data, bits, pause_after);
     }
 
     fn read_write_data(&mut self, data: &[u8], bits: u8, pause_after: bool) -> Vec<u8> {
-        let bytes = self.send_tdo(data, bits, pause_after);
-        self.read_data(bytes).expect("read_write read")
+        let total_bits = (data.len()-1) * 8 + (bits as usize);
+
+        // Anything already queued we don't care about
+        let recv_bytes = self.recv_bytes;
+        let send_bits = self.send_bits;
+
+        self.send_tdo(data, bits, pause_after);
+        self.flush_tap_sequence();
+
+        // We actually care about these bytes, don't throw them away
+        let bytes = self.recv_bytes - recv_bytes;
+        self.recv_bytes = recv_bytes;
+        let mut data = self.read_data(bytes).expect("read_write read");
+
+        // We only want the last total_bits from this Vec, we may need to trim some leading bits
+        let mut buf = vec![];
+        bit_append(&mut buf, 0, &mut data, send_bits + total_bits, send_bits);
+        buf
     }
 
     fn flush(&mut self) {
