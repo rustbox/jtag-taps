@@ -55,6 +55,10 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
             }
         }
         builder = builder.clock_tms_out(ClockTMSOut::NegEdge, buf, tdo, count);
+        let len = builder.as_slice().len();
+        if len + self.buffer.len() > 4096 {
+            self.flush();
+        }
         self.buffer.append(&mut builder.as_slice().to_vec());
     }
 
@@ -70,6 +74,10 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
         if bits > 0 {
             builder = builder.clock_bits(ClockBits::LsbPosIn, 0xff, bits as u8);
             bytes += 1;
+        }
+        let len = builder.as_slice().len();
+        if len + self.buffer.len() > 4096 {
+            self.flush();
         }
         let mut buf = vec![0; bytes];
         self.buffer.append(&mut builder.as_slice().to_vec());
@@ -106,6 +114,10 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
             builder = builder.clock_tms_out(ClockTMSOut::NegEdge, 0, last_bit, 1);
         }
 
+        let len = builder.as_slice().len();
+        if len + self.buffer.len() > 4096 {
+            self.flush();
+        }
         self.buffer.append(&mut builder.as_slice().to_vec());
     }
 
@@ -136,6 +148,11 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
             read_bytes += 1;
         }
         builder = builder.clock_tms(ClockTMS::NegTMSPosTDO, 0, last_bit, 1);
+
+        let len = builder.as_slice().len();
+        if len + self.buffer.len() > 4096 {
+            self.flush();
+        }
 
         let mut buf = vec![0; read_bytes];
         self.buffer.append(&mut builder.as_slice().to_vec());
