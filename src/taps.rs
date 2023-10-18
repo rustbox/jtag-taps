@@ -211,5 +211,28 @@ impl<T, U> Taps<T>
         }
         self.sm.read_reg(Register::Data, bits)
     }
+
+    pub fn queue_dr_read(&mut self, bits: usize) -> bool {
+        assert!(self.active < self.taps.len());
+        let pad_bits = self.taps.len() - self.active - 1;
+
+        // Discard the bypass bits
+        self.sm.change_mode(JtagState::Idle);
+        if pad_bits > 0 {
+            self.sm.queue_read(Register::Data, pad_bits);
+        }
+        self.sm.queue_read(Register::Data, bits)
+    }
+
+    pub fn finish_dr_read(&mut self, bits: usize) -> Vec<u8> {
+        assert!(self.active < self.taps.len());
+        let pad_bits = self.taps.len() - self.active - 1;
+
+        // Discard the bypass bits
+        if pad_bits > 0 {
+            self.sm.cable.finish_read(pad_bits);
+        }
+        self.sm.cable.finish_read(bits)
+    }
 }
 

@@ -186,6 +186,16 @@ impl<T, U> JtagSM<T>
         self.cable.read_data(bits)
     }
 
+    /// Read `bits` from either the instruction or data register
+    pub fn queue_read(&mut self, reg: Register, bits: usize) -> bool {
+        if reg == Register::Data {
+            self.change_mode(JtagState::ShiftDR);
+        } else {
+            self.change_mode(JtagState::ShiftIR);
+        }
+        self.cable.queue_read(bits)
+    }
+
     /// Write `data` into either the instruction or data register.  `bits` indicates how many bits
     /// of the last byte should be written (8 indicates that the entire byte should be written).
     /// The mode will either be ShiftIR / ShiftDR if `pause_after` is false, or PauseIR / PauseDR
