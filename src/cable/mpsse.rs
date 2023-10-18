@@ -227,7 +227,7 @@ impl JtagKey {
         let ft = Ftdi::with_description(description).expect("new");
         let ft = Ft2232h::try_from(ft).expect("try");
         let mut ft = Mpsse::new(ft, clock);
-        ft.ft.set_latency_timer(Duration::from_millis(2)).expect("latency");
+        ft.ft.set_latency_timer(Duration::from_millis(0)).expect("latency");
         ft.ft.set_gpio_upper(PIN_N_TRST | PIN_N_SRST, UPPER_OUTPUT_PINS).expect("pins");
 
         let builder = MpsseCmdBuilder::new()
