@@ -28,6 +28,17 @@ pub trait Cable {
     /// If the cable implements any queueing, flush to hardware.
     fn flush(&mut self) {
     }
+
+    /// Request that data be read without immediately returning the data.  This allows for multiple
+    /// read requests to be queued, which can allow for better performance.  Returns false if the
+    /// adapter doesn't have any more queue space.
+    fn queue_read(&mut self, bits: usize) -> bool;
+
+    /// Return the data from a previously queued read.  `bits` must exactly match the corresponding
+    /// call to `queue_read()`, otherwise the behavior is undefined.  Once you finish a read, you
+    /// must finish all the queued reads by calling `finish_read()` as many times as `queue_read()`
+    /// was called.
+    fn finish_read(&mut self, bits: usize) -> Vec<u8>;
 }
 
 /// Helper function for constructing a cable from a string.  This is expected to be used by CLI

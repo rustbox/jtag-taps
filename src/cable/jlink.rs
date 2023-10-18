@@ -20,6 +20,7 @@ pub struct JLink {
     send_bits: usize,
     read_endpoint: u8,
     write_endpoint: u8,
+    read_queue: Vec<Vec<u8>>,
 }
 
 fn bit_append (dst: &mut Vec<u8>, mut dst_bits: usize, src: &mut [u8], src_bits: usize, src_skip: usize) {
@@ -81,6 +82,7 @@ impl JLink {
                     buffer: vec![],
                     tms_buf: vec![],
                     tdo_buf: vec![],
+                    read_queue: vec![],
                     send_bits: 0,
                     recv_bytes: 0,
                     read_endpoint,
@@ -282,5 +284,15 @@ impl Cable for JLink {
 
     fn flush(&mut self) {
         self.read_data(0).expect("flush");
+    }
+
+    fn queue_read(&mut self, bits: usize) -> bool {
+        let data = Cable::read_data(self, bits);
+        self.read_queue.push(data);
+        true
+    }
+
+    fn finish_read(&mut self, _bits: usize) -> Vec<u8> {
+        self.read_queue.remove(0)
     }
 }

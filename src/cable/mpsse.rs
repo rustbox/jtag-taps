@@ -10,6 +10,7 @@ use libftd2xx::{ClockData, ClockDataOut, ClockBits, ClockBitsOut};
 pub struct Mpsse<T> {
     ft: T,
     buffer: Vec<u8>,
+    read_queue: Vec<Vec<u8>>,
 }
 
 impl<T: FtdiMpsse + MpsseCmdExecutor> Mpsse<T>
@@ -28,6 +29,7 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Mpsse<T>
         Self {
             ft,
             buffer: vec![],
+            read_queue: vec![],
         }
     }
 }
@@ -165,6 +167,16 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
         self.ft.send(&self.buffer).expect("flush");
         self.buffer.clear();
     }
+
+    fn queue_read(&mut self, bits: usize) -> bool {
+        let data = self.read_data(bits);
+        self.read_queue.push(data);
+        true
+    }
+
+    fn finish_read(&mut self, _bits: usize) -> Vec<u8> {
+        self.read_queue.remove(0)
+    }
 }
 
 // Lower pins
@@ -241,5 +253,13 @@ impl Cable for JtagKey {
 
     fn flush(&mut self) {
         self.ft.flush();
+    }
+
+    fn queue_read(&mut self, bits: usize) -> bool {
+        self.ft.queue_read(bits)
+    }
+
+    fn finish_read(&mut self, bits: usize) -> Vec<u8> {
+        self.ft.finish_read(bits)
     }
 }

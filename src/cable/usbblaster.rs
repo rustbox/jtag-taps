@@ -9,6 +9,7 @@ pub struct UsbBlaster {
     tdo: u8,
     tms: u8,
     clk: u8,
+    read_queue: Vec<Vec<u8>>,
 }
 
 const READ_CMD: u8 = 1 << 6;
@@ -32,6 +33,7 @@ impl UsbBlaster {
             tdo: 4,
             tms: 1,
             clk: 0,
+            read_queue: vec![],
         }
     }
 
@@ -136,5 +138,15 @@ impl Cable for UsbBlaster {
         self.ft.write(&buf).expect("send");
         self.ft.read(&mut recv).expect("send");
         Self::select_bit(recv, self.tdi)
+    }
+
+    fn queue_read(&mut self, bits: usize) -> bool {
+        let data = self.read_data(bits);
+        self.read_queue.push(data);
+        true
+    }
+
+    fn finish_read(&mut self, _bits: usize) -> Vec<u8> {
+        self.read_queue.remove(0)
     }
 }
