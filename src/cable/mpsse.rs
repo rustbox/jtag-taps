@@ -9,6 +9,7 @@ use libftd2xx::{ClockData, ClockDataOut, ClockBits, ClockBitsOut};
 
 pub struct Mpsse<T> {
     ft: T,
+    buffer: Vec<u8>,
 }
 
 impl<T: FtdiMpsse + MpsseCmdExecutor> Mpsse<T>
@@ -26,6 +27,7 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Mpsse<T>
 
         Self {
             ft,
+            buffer: vec![],
         }
     }
 }
@@ -51,7 +53,7 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
             }
         }
         builder = builder.clock_tms_out(ClockTMSOut::NegEdge, buf, tdo, count);
-        self.ft.send(builder.as_slice()).expect("send");
+        self.buffer.append(&mut builder.as_slice().to_vec());
     }
 
     fn read_data(&mut self, mut bits: usize) -> Vec<u8>
@@ -68,7 +70,9 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
             bytes += 1;
         }
         let mut buf = vec![0; bytes];
-        self.ft.xfer(builder.as_slice(), &mut buf).expect("send");
+        self.buffer.append(&mut builder.as_slice().to_vec());
+        self.ft.xfer(&self.buffer, &mut buf).expect("send");
+        self.buffer.clear();
         if bits > 0 {
             let last_idx = buf.len()-1;
             buf[last_idx] >>= 8 - bits;
@@ -100,7 +104,7 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
             builder = builder.clock_tms_out(ClockTMSOut::NegEdge, 0, last_bit, 1);
         }
 
-        self.ft.send(builder.as_slice()).expect("send");
+        self.buffer.append(&mut builder.as_slice().to_vec());
     }
 
     fn read_write_data(&mut self, data: &[u8], mut bits: u8, pause_after: bool) -> Vec<u8> {
@@ -132,7 +136,9 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
         builder = builder.clock_tms(ClockTMS::NegTMSPosTDO, 0, last_bit, 1);
 
         let mut buf = vec![0; read_bytes];
-        self.ft.xfer(builder.as_slice(), &mut buf).expect("send");
+        self.buffer.append(&mut builder.as_slice().to_vec());
+        self.ft.xfer(&self.buffer, &mut buf).expect("send");
+        self.buffer.clear();
 
         // We don't care about the bit we read on the second mode transition
         if pause_after {
@@ -153,6 +159,11 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
             buf.pop();
         }
         buf
+    }
+
+    fn flush(&mut self) {
+        self.ft.send(&self.buffer).expect("flush");
+        self.buffer.clear();
     }
 }
 
@@ -195,7 +206,7 @@ impl JtagKey {
         ft.ft.send(builder.as_slice()).expect("send");
 
         JtagKey {
-            ft
+            ft,
         }
     }
 
@@ -226,5 +237,9 @@ impl Cable for JtagKey {
 
     fn read_write_data(&mut self, data: &[u8], bits: u8, pause_after: bool) -> Vec<u8> {
         self.ft.read_write_data(data, bits, pause_after)
+    }
+
+    fn flush(&mut self) {
+        self.ft.flush();
     }
 }
