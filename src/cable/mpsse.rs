@@ -9,8 +9,12 @@ use libftd2xx::{ClockData, ClockDataOut, ClockBits, ClockBitsOut};
 
 pub struct Mpsse<T> {
     ft: T,
+    // Data to send to the adapter
     buffer: Vec<u8>,
-    read_queue: Vec<Vec<u8>>,
+    // Data we have read from the adapter and not yet returned
+    queued_reads: Vec<u8>,
+    // Number of bits in each queued read
+    queued_read_bits: Vec<usize>,
 }
 
 impl<T: FtdiMpsse + MpsseCmdExecutor> Mpsse<T>
@@ -29,7 +33,8 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Mpsse<T>
         Self {
             ft,
             buffer: vec![],
-            read_queue: vec![],
+            queued_reads: vec![],
+            queued_read_bits: vec![],
         }
     }
 }
@@ -62,8 +67,10 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
         self.buffer.append(&mut builder.as_slice().to_vec());
     }
 
-    fn read_data(&mut self, mut bits: usize) -> Vec<u8>
+    fn queue_read(&mut self, mut bits: usize) -> bool
     {
+        self.queued_read_bits.push(bits);
+
         let mut bytes = bits / 8;
         let mut builder = MpsseCmdBuilder::new();
         if bytes > 0 {
@@ -75,19 +82,56 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
             builder = builder.clock_bits(ClockBits::LsbPosIn, 0xff, bits as u8);
             bytes += 1;
         }
+
         let len = builder.as_slice().len();
         if len + self.buffer.len() > 4096 {
             self.flush();
         }
-        let mut buf = vec![0; bytes];
-        self.buffer.append(&mut builder.as_slice().to_vec());
-        self.ft.xfer(&self.buffer, &mut buf).expect("send");
-        self.buffer.clear();
-        if bits > 0 {
+
+        let total_bytes = bytes + self.queued_read_bits.iter()
+            .map(|x| (*x + 7) / 8)
+            .sum::<usize>();
+
+        if total_bytes < 4096 {
+            self.buffer.append(&mut builder.as_slice().to_vec());
+            true
+        } else {
+            self.queued_read_bits.pop();
+            false
+        }
+    }
+
+    fn finish_read(&mut self, bits: usize) -> Vec<u8>
+    {
+        assert_eq!(bits, self.queued_read_bits.remove(0));
+        let bytes = (bits + 7) / 8;
+
+        if self.queued_reads.is_empty() {
+            // Read all of the pending bytes
+            let total_bytes = bytes + self.queued_read_bits.iter()
+                .map(|x| (*x + 7) / 8)
+                .sum::<usize>();
+            self.queued_reads.resize(total_bytes, 0);
+            self.ft.xfer(&self.buffer, &mut self.queued_reads).expect("send");
+            self.buffer.clear();
+        }
+
+        let mut buf = self.queued_reads.split_off(bytes);
+        // split_off returns the second half of the vec, but we want the first half
+        std::mem::swap(&mut buf, &mut self.queued_reads);
+
+        if bits % 8 != 0 {
             let last_idx = buf.len()-1;
-            buf[last_idx] >>= 8 - bits;
+            buf[last_idx] >>= 8 - (bits % 8);
         }
         buf
+    }
+
+    fn read_data(&mut self, bits: usize) -> Vec<u8>
+    {
+        assert!(self.queued_read_bits.is_empty());
+        self.queue_read(bits);
+        self.finish_read(bits)
     }
 
     fn write_data(&mut self, data: &[u8], mut bits: u8, pause_after: bool)
@@ -127,6 +171,8 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
 
         assert!(bits <= 8);
         assert!(bits != 0);
+
+        assert!(self.queued_read_bits.is_empty());
 
         // We will send the last bit using clock_tms
         bits -= 1;
@@ -183,16 +229,6 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
     fn flush(&mut self) {
         self.ft.send(&self.buffer).expect("flush");
         self.buffer.clear();
-    }
-
-    fn queue_read(&mut self, bits: usize) -> bool {
-        let data = self.read_data(bits);
-        self.read_queue.push(data);
-        true
-    }
-
-    fn finish_read(&mut self, _bits: usize) -> Vec<u8> {
-        self.read_queue.remove(0)
     }
 }
 
