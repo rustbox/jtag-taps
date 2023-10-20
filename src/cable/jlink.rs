@@ -6,6 +6,8 @@ use std::time::Duration;
 use rusb::{DeviceHandle, Direction, GlobalContext};
 use rusb::constants::*;
 
+const TAP_SEQUENCE_MAX: usize = 390;
+
 pub struct JLink {
     device: DeviceHandle<GlobalContext>,
     // queued bytes to send
@@ -222,7 +224,9 @@ impl JLink {
 
     fn tap_sequence(&mut self, tms: Vec<u8>, tdo: Vec<u8>, bits: usize) {
         assert_eq!(tms.len(), tdo.len());
-        assert!(tms.len() < 390);
+        if self.tms_buf.len() + tms.len() > TAP_SEQUENCE_MAX {
+            self.flush_tap_sequence();
+        }
 
         bit_append(&mut self.tms_buf, self.send_bits, &tms, bits, 0);
         bit_append(&mut self.tdo_buf, self.send_bits, &tdo, bits, 0);
@@ -231,7 +235,7 @@ impl JLink {
 
     fn flush_tap_sequence(&mut self) {
         assert_eq!(self.tms_buf.len(), self.tdo_buf.len());
-        assert!(self.tms_buf.len() < 390);
+        assert!(self.tms_buf.len() < TAP_SEQUENCE_MAX);
         if !self.tms_buf.is_empty() {
             let bytes = self.tms_buf.len();
             let mut cmdbuf = vec![0xcd, (self.send_bits & 0xff) as u8, ((self.send_bits >> 8) & 0xff) as u8];
@@ -267,6 +271,9 @@ impl JLink {
     }
 
     fn queue_read_write(&mut self, data: &[u8], bits: u8, pause_after: bool) -> bool {
+        if self.tms_buf.len() + data.len() + (bits as usize + 7) / 8 + 1 >= TAP_SEQUENCE_MAX {
+            return false;
+        }
         self.queued_read_offsets.push(self.recv_bytes);
         self.queued_send_bits.push(self.send_bits);
 
