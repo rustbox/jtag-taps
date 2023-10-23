@@ -13,8 +13,8 @@ pub struct Mpsse<T> {
     buffer: Vec<u8>,
     // Data we have read from the adapter and not yet returned
     queued_reads: Vec<u8>,
-    // Number of bits in each queued read
-    queued_read_bits: Vec<usize>,
+    // (bits, bytes, write, pause)
+    queued_read_state: Vec<(usize, usize, bool, bool)>,
 }
 
 impl<T: FtdiMpsse + MpsseCmdExecutor> Mpsse<T>
@@ -34,7 +34,7 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Mpsse<T>
             ft,
             buffer: vec![],
             queued_reads: vec![],
-            queued_read_bits: vec![],
+            queued_read_state: vec![],
         }
     }
 }
@@ -69,7 +69,7 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
 
     fn queue_read(&mut self, mut bits: usize) -> bool
     {
-        self.queued_read_bits.push(bits);
+        let orig_bits = bits;
 
         let mut bytes = bits / 8;
         let mut builder = MpsseCmdBuilder::new();
@@ -88,28 +88,28 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
             self.flush();
         }
 
-        let total_bytes = bytes + self.queued_read_bits.iter()
-            .map(|x| (*x + 7) / 8)
+        let total_bytes = bytes + self.queued_read_state.iter()
+            .map(|x| (x.0 + 7) / 8)
             .sum::<usize>();
 
         if total_bytes < 4096 {
+            self.queued_read_state.push((orig_bits, bytes, false, false));
             self.buffer.append(&mut builder.as_slice().to_vec());
             true
         } else {
-            self.queued_read_bits.pop();
             false
         }
     }
 
-    fn finish_read(&mut self, bits: usize) -> Vec<u8>
+    fn finish_read(&mut self, mut bits: usize) -> Vec<u8>
     {
-        assert_eq!(bits, self.queued_read_bits.remove(0));
-        let bytes = (bits + 7) / 8;
+        let (orig_bits, bytes, pause_after, write) = self.queued_read_state.remove(0);
+        assert_eq!(bits, orig_bits);
 
         if self.queued_reads.is_empty() {
             // Read all of the pending bytes
-            let total_bytes = bytes + self.queued_read_bits.iter()
-                .map(|x| (*x + 7) / 8)
+            let total_bytes = bytes + self.queued_read_state.iter()
+                .map(|x| x.1)
                 .sum::<usize>();
             self.queued_reads.resize(total_bytes, 0);
             self.ft.xfer(&self.buffer, &mut self.queued_reads).expect("send");
@@ -120,16 +120,36 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
         // split_off returns the second half of the vec, but we want the first half
         std::mem::swap(&mut buf, &mut self.queued_reads);
 
-        if bits % 8 != 0 {
-            let last_idx = buf.len()-1;
-            buf[last_idx] >>= 8 - (bits % 8);
+        if pause_after {
+            buf.pop();
+        }
+
+        if write {
+            let len = buf.len();
+            buf[len-1] >>= 7;
+
+            bits -= 1;
+            if bits >= 1 {
+                // Shift the bits from clock_bits
+                buf[len-2] >>= 8 - (bits % 8);
+
+                // Need to repack the bit from clock_tms into the bits from clock_bits
+                let last_recv = buf[len-1] & 1;
+                buf[len-2] |=  last_recv << (bits % 8);
+                buf.pop();
+            }
+        } else {
+            if bits % 8 != 0 {
+                let last_idx = buf.len()-1;
+                buf[last_idx] >>= 8 - (bits % 8);
+            }
         }
         buf
     }
 
     fn read_data(&mut self, bits: usize) -> Vec<u8>
     {
-        assert!(self.queued_read_bits.is_empty());
+        assert!(self.queued_read_state.is_empty());
         self.queue_read(bits);
         self.finish_read(bits)
     }
@@ -165,14 +185,13 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
         self.buffer.append(&mut builder.as_slice().to_vec());
     }
 
-    fn read_write_data(&mut self, data: &[u8], mut bits: u8, pause_after: bool) -> Vec<u8> {
+    fn queue_read_write(&mut self, data: &[u8], mut bits: u8, pause_after: bool) -> bool {
+        let total_bits = (data.len()-1) * 8 + bits as usize;
         let mut read_bytes = 1;
         let mut builder = MpsseCmdBuilder::new();
 
         assert!(bits <= 8);
         assert!(bits != 0);
-
-        assert!(self.queued_read_bits.is_empty());
 
         // We will send the last bit using clock_tms
         bits -= 1;
@@ -200,30 +219,24 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
             self.flush();
         }
 
-        let mut buf = vec![0; read_bytes];
-        self.buffer.append(&mut builder.as_slice().to_vec());
-        self.ft.xfer(&self.buffer, &mut buf).expect("send");
-        self.buffer.clear();
+        let total_bytes = read_bytes + self.queued_read_state.iter()
+            .map(|x| (x.0 + 7) / 8)
+            .sum::<usize>();
 
-        // We don't care about the bit we read on the second mode transition
-        if pause_after {
-            buf.pop();
+        if total_bytes < 4096 {
+            self.queued_read_state.push((total_bits, read_bytes, true, pause_after));
+            self.buffer.append(&mut builder.as_slice().to_vec());
+            true
+        } else {
+            false
         }
+    }
 
-        // Last read of a single bit will be in MSB position.  We want it in LSB position.
-        let len = buf.len();
-        buf[len-1] >>= 7;
-
-        if bits >= 1 {
-            // Shift the bits from clock_bits
-            buf[len-2] >>= 8 - bits;
-
-            // Need to repack the bit from clock_tms into the bits from clock_bits
-            let last_recv = buf[len-1] & 1;
-            buf[len-2] |=  last_recv << bits;
-            buf.pop();
-        }
-        buf
+    fn read_write_data(&mut self, data: &[u8], bits: u8, pause_after: bool) -> Vec<u8> {
+        assert!(self.queued_read_state.is_empty());
+        self.queue_read_write(data, bits, pause_after);
+        let total_bits = (data.len()-1) * 8 + bits as usize;
+        self.finish_read(total_bits)
     }
 
     fn flush(&mut self) {
@@ -302,6 +315,10 @@ impl Cable for JtagKey {
 
     fn read_write_data(&mut self, data: &[u8], bits: u8, pause_after: bool) -> Vec<u8> {
         self.ft.read_write_data(data, bits, pause_after)
+    }
+
+    fn queue_read_write(&mut self, data: &[u8], bits: u8, pause_after: bool) -> bool {
+        self.ft.queue_read_write(data, bits, pause_after)
     }
 
     fn flush(&mut self) {

@@ -34,6 +34,13 @@ pub trait Cable {
     /// adapter doesn't have any more queue space.
     fn queue_read(&mut self, bits: usize) -> bool;
 
+    /// Shift out bits on the TDI line.  `bits` is the number of bits to send from the last byte.
+    /// Should be called with state = ShiftIR or ShiftDR.  State won't change unless `pause_after`
+    /// is true, in which case it will be PauseIR or PauseDR on exit.  Also captures
+    /// the bits that were shifted in from TDO, which can be retrieved with a queue to
+    /// `finish_read()`.  Returns false if the adapter doesn't have any more queue space.
+    fn queue_read_write(&mut self, data: &[u8], bits: u8, pause_after: bool) -> bool;
+
     /// Return the data from a previously queued read.  `bits` must exactly match the corresponding
     /// call to `queue_read()`, otherwise the behavior is undefined.  Once you finish a read, you
     /// must finish all the queued reads by calling `finish_read()` as many times as `queue_read()`

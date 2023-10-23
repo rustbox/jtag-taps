@@ -338,6 +338,10 @@ impl Cable for JLink {
         Cable::finish_read(self, total_bits)
     }
 
+    fn queue_read_write(&mut self, data: &[u8], bits: u8, pause_after: bool) -> bool {
+        self.queue_read_write(data, bits, pause_after)
+    }
+
     fn finish_read(&mut self, bits: usize) -> Vec<u8> {
         self.finish_read(bits).expect("finish_read")
     }

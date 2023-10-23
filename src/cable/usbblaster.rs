@@ -146,6 +146,12 @@ impl Cable for UsbBlaster {
         true
     }
 
+    fn queue_read_write(&mut self, data: &[u8], bits: u8, pause_after: bool) -> bool {
+        let result = self.read_write_data(data, bits, pause_after);
+        self.read_queue.push(result);
+        true
+    }
+
     fn finish_read(&mut self, _bits: usize) -> Vec<u8> {
         self.read_queue.remove(0)
     }
