@@ -188,6 +188,13 @@ impl<T, U> Taps<T>
     /// write the entire byte).  Returns the bits that were shifted out while `dr` was
     /// shifted in.
     pub fn read_write_dr(&mut self, dr: &[u8], bits: usize) -> Vec<u8> {
+        assert_eq!(self.queued_reads, 0);
+        self.queue_dr_read_write(dr, bits);
+        let total_bits = (dr.len()-1) * 8 + bits;
+        self.finish_dr_read(total_bits)
+    }
+
+    pub fn queue_dr_read_write(&mut self, dr: &[u8], bits: usize) -> bool {
         assert!(self.active < self.taps.len());
         let this_len = (dr.len() - 1) * 8 + bits;
         let pad_bits = self.active;
@@ -199,25 +206,27 @@ impl<T, U> Taps<T>
         }
         let dr = add_ones_to_end(dr, this_len, pad_bits);
         if discard_bits > 0 {
-            self.sm.read_reg(Register::Data, discard_bits);
+            if !self.sm.queue_read(Register::Data, discard_bits) {
+                return false;
+            }
         }
-        let data = self.sm.read_write_reg(Register::Data, &dr, total_bits as u8, true);
-        self.sm.change_mode(JtagState::Idle);
-        data
+        if self.sm.queue_read_write(Register::Data, &dr, total_bits as u8, true) {
+            self.sm.change_mode(JtagState::Idle);
+            self.queued_reads += 1;
+            true
+        } else {
+            self.sm.change_mode(JtagState::Idle);
+            self.dangling_read = discard_bits > 0;
+            false
+        }
     }
 
     /// Read the data register of the TAP selected by `select_tap`.  `bits` indicates the length of
     /// the data register for the current instruction.
     pub fn read_dr(&mut self, bits: usize) -> Vec<u8> {
-        assert!(self.active < self.taps.len());
-        let pad_bits = self.taps.len() - self.active - 1;
-
-        // Discard the bypass bits
-        self.sm.change_mode(JtagState::Idle);
-        if pad_bits > 0 {
-            self.sm.read_reg(Register::Data, pad_bits);
-        }
-        self.sm.read_reg(Register::Data, bits)
+        assert_eq!(self.queued_reads, 0);
+        self.queue_dr_read(bits);
+        self.finish_dr_read(bits)
     }
 
     pub fn queue_dr_read(&mut self, bits: usize) -> bool {
@@ -234,7 +243,7 @@ impl<T, U> Taps<T>
             }
         }
         if !self.sm.queue_read(Register::Data, total_bits) {
-            self.dangling_read = true;
+            self.dangling_read = discard_bits > 0;
             false
         } else {
             self.queued_reads += 1;
@@ -258,7 +267,9 @@ impl<T, U> Taps<T>
         // interesting data.
         self.queued_reads -= 1;
         if self.queued_reads == 0 && self.dangling_read {
-            self.sm.cable.finish_read(discard_bits);
+            if discard_bits > 0 {
+                self.sm.cable.finish_read(discard_bits);
+            }
             self.dangling_read = false;
         }
         ret

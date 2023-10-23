@@ -240,5 +240,22 @@ impl<T, U> JtagSM<T>
         }
         data
     }
+
+    pub fn queue_read_write(&mut self, reg: Register, data: &[u8], bits: u8, pause_after: bool) -> bool {
+        if reg == Register::Data {
+            self.change_mode(JtagState::ShiftDR);
+        } else {
+            self.change_mode(JtagState::ShiftIR);
+        }
+        let data = self.cable.queue_read_write(data, bits, pause_after);
+        if pause_after {
+            if reg == Register::Data {
+                self.state = JtagState::PauseDR;
+            } else {
+                self.state = JtagState::PauseIR;
+            }
+        }
+        data
+    }
 }
 
