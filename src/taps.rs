@@ -187,12 +187,16 @@ impl<T, U> Taps<T>
         assert!(self.active < self.taps.len());
         let this_len = (dr.len() - 1) * 8 + bits;
         let pad_bits = self.active;
+        let discard_bits = self.taps.len() - self.active - 1;
 
         let mut total_bits = (pad_bits + this_len) % 8;
         if total_bits == 0 {
             total_bits = 8;
         }
         let dr = add_ones_to_end(dr, this_len, pad_bits);
+        if discard_bits > 0 {
+            self.sm.read_reg(Register::Data, discard_bits);
+        }
         let data = self.sm.read_write_reg(Register::Data, &dr, total_bits as u8, true);
         self.sm.change_mode(JtagState::Idle);
         data
@@ -214,25 +218,29 @@ impl<T, U> Taps<T>
 
     pub fn queue_dr_read(&mut self, bits: usize) -> bool {
         assert!(self.active < self.taps.len());
-        let pad_bits = self.taps.len() - self.active - 1;
+        let pad_bits = self.active;
+        let discard_bits = self.taps.len() - self.active - 1;
+        let total_bits = pad_bits + bits;
 
         // Discard the bypass bits
         self.sm.change_mode(JtagState::Idle);
-        if pad_bits > 0 {
-            self.sm.queue_read(Register::Data, pad_bits);
+        if discard_bits > 0 {
+            self.sm.queue_read(Register::Data, discard_bits);
         }
-        self.sm.queue_read(Register::Data, bits)
+        self.sm.queue_read(Register::Data, total_bits)
     }
 
     pub fn finish_dr_read(&mut self, bits: usize) -> Vec<u8> {
         assert!(self.active < self.taps.len());
-        let pad_bits = self.taps.len() - self.active - 1;
+        let pad_bits = self.active;
+        let discard_bits = self.taps.len() - self.active - 1;
+        let total_bits = pad_bits + bits;
 
         // Discard the bypass bits
-        if pad_bits > 0 {
-            self.sm.cable.finish_read(pad_bits);
+        if discard_bits > 0 {
+            self.sm.cable.finish_read(discard_bits);
         }
-        self.sm.cable.finish_read(bits)
+        self.sm.cable.finish_read(total_bits)
     }
 }
 
