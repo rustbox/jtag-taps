@@ -261,7 +261,19 @@ impl<T, U> Taps<T>
         if discard_bits > 0 {
             self.sm.cable.finish_read(discard_bits);
         }
-        let ret = self.sm.cable.finish_read(total_bits);
+        let mut ret = self.sm.cable.finish_read(total_bits);
+
+        // Remove the pad bits
+        if pad_bits > 0 {
+            let bytes = (bits + 7) / 8;
+            // Trim off any extra bytes
+            ret.resize(bytes, 0);
+
+            // Mask off high bits
+            if bits % 8 != 0 {
+                ret[bytes-1] &= (1 << (bits % 8)) - 1;
+            }
+        }
 
         // Handle the case where we were able to queue the read of the discard bits, but not of the
         // interesting data.

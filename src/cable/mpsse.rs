@@ -220,7 +220,7 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
         }
 
         let total_bytes = read_bytes + self.queued_read_state.iter()
-            .map(|x| (x.0 + 7) / 8)
+            .map(|x| x.1)
             .sum::<usize>();
 
         if total_bytes < 4096 {
