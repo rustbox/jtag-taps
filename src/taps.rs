@@ -26,6 +26,8 @@ pub struct Taps<T> {
     pub sm: JtagSM<T>,
     taps: Vec<Tap>,
     active: usize,
+    dangling_read: bool,
+    queued_reads: usize
 }
 
 impl<T, U> Taps<T>
@@ -38,6 +40,8 @@ impl<T, U> Taps<T>
             sm,
             taps: Vec::new(),
             active: 0,
+            dangling_read: false,
+            queued_reads: 0,
         }
     }
 
@@ -225,9 +229,17 @@ impl<T, U> Taps<T>
         // Discard the bypass bits
         self.sm.change_mode(JtagState::Idle);
         if discard_bits > 0 {
-            self.sm.queue_read(Register::Data, discard_bits);
+            if !self.sm.queue_read(Register::Data, discard_bits) {
+                return false;
+            }
         }
-        self.sm.queue_read(Register::Data, total_bits)
+        if !self.sm.queue_read(Register::Data, total_bits) {
+            self.dangling_read = true;
+            false
+        } else {
+            self.queued_reads += 1;
+            true
+        }
     }
 
     pub fn finish_dr_read(&mut self, bits: usize) -> Vec<u8> {
@@ -240,7 +252,16 @@ impl<T, U> Taps<T>
         if discard_bits > 0 {
             self.sm.cable.finish_read(discard_bits);
         }
-        self.sm.cable.finish_read(total_bits)
+        let ret = self.sm.cable.finish_read(total_bits);
+
+        // Handle the case where we were able to queue the read of the discard bits, but not of the
+        // interesting data.
+        self.queued_reads -= 1;
+        if self.queued_reads == 0 && self.dangling_read {
+            self.sm.cable.finish_read(discard_bits);
+            self.dangling_read = false;
+        }
+        ret
     }
 }
 
