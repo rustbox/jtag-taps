@@ -7,6 +7,8 @@ use libftd2xx::{Ft2232h, Ftdi, FtdiMpsse, MpsseCmdBuilder, MpsseCmdExecutor, Ftd
 use ftdi_mpsse::{ClockTMSOut, ClockTMS};
 use libftd2xx::{ClockData, ClockDataOut, ClockBits, ClockBitsOut};
 
+const MAX_BUFFER_SIZE: usize = 4096;
+
 pub struct Mpsse<T> {
     ft: T,
     // Data to send to the adapter
@@ -61,7 +63,7 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
         }
         builder = builder.clock_tms_out(ClockTMSOut::NegEdge, buf, tdo, count);
         let len = builder.as_slice().len();
-        if len + self.buffer.len() > 4096 {
+        if len + self.buffer.len() > MAX_BUFFER_SIZE {
             self.flush();
         }
         self.buffer.append(&mut builder.as_slice().to_vec());
@@ -84,7 +86,7 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
         }
 
         let len = builder.as_slice().len();
-        if len + self.buffer.len() > 4096 {
+        if len + self.buffer.len() > MAX_BUFFER_SIZE {
             self.flush();
         }
 
@@ -92,7 +94,7 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
             .map(|x| (x.0 + 7) / 8)
             .sum::<usize>();
 
-        if total_bytes < 4096 {
+        if total_bytes < MAX_BUFFER_SIZE {
             self.queued_read_state.push((orig_bits, bytes, false, false));
             self.buffer.append(&mut builder.as_slice().to_vec());
             true
@@ -179,7 +181,7 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
         }
 
         let len = builder.as_slice().len();
-        if len + self.buffer.len() > 4096 {
+        if len + self.buffer.len() > MAX_BUFFER_SIZE {
             self.flush();
         }
         self.buffer.append(&mut builder.as_slice().to_vec());
@@ -215,7 +217,7 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
         builder = builder.clock_tms(ClockTMS::NegTMSPosTDO, 0, last_bit, 1);
 
         let len = builder.as_slice().len();
-        if len + self.buffer.len() > 4096 {
+        if len + self.buffer.len() > MAX_BUFFER_SIZE {
             self.flush();
         }
 
@@ -223,7 +225,7 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
             .map(|x| x.1)
             .sum::<usize>();
 
-        if total_bytes < 4096 {
+        if total_bytes < MAX_BUFFER_SIZE {
             self.queued_read_state.push((total_bits, read_bytes, true, pause_after));
             self.buffer.append(&mut builder.as_slice().to_vec());
             true
