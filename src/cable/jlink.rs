@@ -187,8 +187,8 @@ impl JLink {
         self.send_command(0x7, vec![]);
         let data = self.read_data(8).expect("read status");
 
-        let vref = ((data[0] as u16) + (data[1] as u16)) << 8;
-        if vref < 15000 {
+        let vref = (data[0] as u16) + ((data[1] as u16) << 8);
+        if vref < 1500 {
             panic!("vref too low, possibly unpowered or disconnected");
         }
         data
