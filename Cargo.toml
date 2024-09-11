@@ -9,11 +9,11 @@ repository = "https://github.com/srwalter/jtag-taps"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-libftd2xx = "0.32"
+libftd2xx = { version = "0.32", optional = true} 
 ftdi-mpsse = "0.1"
 rusb = "0.9.3"
 embedded-hal = "1.0.0"
 
 [features]
-std = []
+std = ["dep:libftd2xx"]
 default = ["std"]

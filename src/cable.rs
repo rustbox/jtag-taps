@@ -3,6 +3,7 @@
 
 use alloc::{boxed::Box, format, string::String, vec::Vec};
 pub mod mpsse;
+#[cfg(feature = "std")]
 pub mod ft232r;
 pub mod usbblaster;
 pub mod jlink;
