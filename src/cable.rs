@@ -6,6 +6,7 @@ pub mod mpsse;
 #[cfg(feature = "std")]
 pub mod ft232r;
 pub mod usbblaster;
+#[cfg(feature = "std")]
 pub mod jlink;
 
 pub mod gpio;
