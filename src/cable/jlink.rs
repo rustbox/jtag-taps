@@ -1,8 +1,10 @@
 //! Implement the `Cable` trait for "jlink" compatible hardware adapters
 use crate::cable::Cable;
 
-use std::time::Duration;
+use core::time::Duration;
 
+use alloc::vec::Vec;
+use alloc::vec;
 use rusb::{DeviceHandle, Direction, GlobalContext};
 use rusb::constants::*;
 
@@ -169,7 +171,7 @@ impl JLink {
 
         // What's left in queued_reads after split_off() is garbage, buf is the good data
         let mut buf = self.queued_reads.split_off(offset);
-        std::mem::swap(&mut buf, &mut self.queued_reads);
+        core::mem::swap(&mut buf, &mut self.queued_reads);
 
         let send_bits = self.queued_send_bits.remove(0);
         let mut data = vec![];

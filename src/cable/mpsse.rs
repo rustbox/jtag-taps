@@ -1,8 +1,10 @@
 //! Implement the `Cable` trait for "jtagkey" compatible hardware adapters like the Bus Blaster
 use crate::cable::Cable;
 
-use std::time::Duration;
+use core::time::Duration;
 
+use alloc::vec::Vec;
+use alloc::vec;
 use libftd2xx::{Ft2232h, Ftdi, FtdiMpsse, MpsseCmdBuilder, MpsseCmdExecutor, FtdiCommon};
 use ftdi_mpsse::{ClockTMSOut, ClockTMS};
 use libftd2xx::{ClockData, ClockDataOut, ClockBits, ClockBitsOut};
@@ -20,7 +22,7 @@ pub struct Mpsse<T> {
 }
 
 impl<T: FtdiMpsse + MpsseCmdExecutor> Mpsse<T>
-    where <T as MpsseCmdExecutor>::Error: std::fmt::Debug
+    where <T as MpsseCmdExecutor>::Error: core::fmt::Debug
 {
     pub fn new(mut ft: T, clock: u32) -> Self
     {
@@ -42,7 +44,7 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Mpsse<T>
 }
 
 impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
-    where <T as MpsseCmdExecutor>::Error: std::fmt::Debug
+    where <T as MpsseCmdExecutor>::Error: core::fmt::Debug
 {
     fn change_mode(&mut self, tms: &[usize], tdo: bool) {
         let mut count = 0;
@@ -120,7 +122,7 @@ impl<T: FtdiMpsse + MpsseCmdExecutor> Cable for Mpsse<T>
 
         let mut buf = self.queued_reads.split_off(bytes);
         // split_off returns the second half of the vec, but we want the first half
-        std::mem::swap(&mut buf, &mut self.queued_reads);
+        core::mem::swap(&mut buf, &mut self.queued_reads);
 
         if pause_after {
             buf.pop();

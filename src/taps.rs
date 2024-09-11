@@ -2,6 +2,12 @@
 //! client to interact with one selected TAP as if it were the only TAP in the chain, so that the
 //! client doesn't have to deal with putting the other TAPs into bypass and shifting data through
 //! the bypass registers.
+use alloc::vec::Vec;
+use alloc::vec;
+
+#[cfg(feature = "std")]
+use std::println;
+
 use crate::statemachine::{JtagSM, JtagState, Register};
 use crate::cable::Cable;
 
@@ -31,7 +37,7 @@ pub struct Taps<T> {
 }
 
 impl<T, U> Taps<T>
-    where T: std::ops::DerefMut<Target=U>,
+    where T: core::ops::DerefMut<Target=U>,
           U: Cable + ?Sized
 {
     /// Create an object using an existing `JtagSM` object
@@ -65,6 +71,7 @@ impl<T, U> Taps<T>
             let bit = self.sm.read_reg(Register::Instruction, 1);
             if bit[0] != 0 {
                 if count > 0 {
+                    #[cfg(feature = "std")]
                     println!("found IR len {}", count+1);
                     irlen.push(count+1)
                 }
@@ -82,6 +89,7 @@ impl<T, U> Taps<T>
         for _ in 0..irlen.len() {
             let bit = self.sm.read_reg(Register::Data, 1);
             if bit[0] == 0 {
+                #[cfg(feature = "std")]
                 println!("invalid IDCODE of 0");
                 ids.push(0);
             } else {
@@ -96,6 +104,7 @@ impl<T, U> Taps<T>
         ids.reverse();
 
         for i in 0..irlen.len() {
+            #[cfg(feature = "std")]
             println!("Adding tap {} idcode {:x}", i, ids[i]);
             self.add_tap(irlen[i] as usize);
         }

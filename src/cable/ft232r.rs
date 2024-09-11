@@ -1,6 +1,8 @@
 //! Implement the `Cable` trait for FTDI RS232R-based adapters
 use crate::cable::Cable;
 
+use alloc::vec::Vec;
+use alloc::vec;
 use libftd2xx::{Ftdi, FtdiCommon, BitMode};
 
 pub struct Ft232r {

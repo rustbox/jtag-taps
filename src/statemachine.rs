@@ -1,6 +1,9 @@
 //! This provides a higher-level interface than the `Cable` trait.  Specifically, it keeps track of
 //! the state of the JTAG state machine, and allows setting the state to any desired state.
 //! `JtagSM` will get to that state by the most efficient path, based on the current state.
+use alloc::vec::Vec;
+use alloc::vec;
+
 use crate::cable::Cable;
 
 #[derive(Clone,Copy,PartialEq)]
@@ -63,7 +66,7 @@ pub struct JtagSM<T> {
 }
 
 impl<T, U> JtagSM<T>
-    where T: std::ops::DerefMut<Target=U>,
+    where T: core::ops::DerefMut<Target=U>,
           U: Cable + ?Sized
 {
     /// Create a JTAG state machine using an existing `Cable`

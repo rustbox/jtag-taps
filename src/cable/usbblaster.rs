@@ -1,6 +1,8 @@
 //! Implement the `Cable` trait for Altera USB Blaster and clones
 use crate::cable::Cable;
 
+use alloc::vec::Vec;
+use alloc::vec;
 use libftd2xx::{Ftdi, FtdiCommon};
 
 pub struct UsbBlaster {

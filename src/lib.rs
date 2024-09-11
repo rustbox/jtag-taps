@@ -20,7 +20,7 @@
 //! 
 //! # Example
 //! ```
-//! use jtag_taps::cable::jtagkey::JtagKey;
+//! use jtag_taps::cable::mpsse::JtagKey;
 //! use jtag_taps::statemachine::JtagSM;
 //! use jtag_taps::taps::Taps;
 //! let cable = JtagKey::new("Dual RS232-HS A", 1 << 20);
@@ -35,6 +35,14 @@
 //! ];
 //! taps.write_dr(&buf, 8);
 //! ```
+
+
+#![no_std]
+
+#[cfg(feature = "std")]
+extern crate std;
+
+extern crate alloc;
 
 pub mod cable;
 pub mod statemachine;

@@ -12,3 +12,8 @@ repository = "https://github.com/srwalter/jtag-taps"
 libftd2xx = "0.32"
 ftdi-mpsse = "0.1"
 rusb = "0.9.3"
+embedded-hal = "1.0.0"
+
+[features]
+std = []
+default = ["std"]
