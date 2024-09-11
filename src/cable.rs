@@ -2,6 +2,7 @@
 //! implement the `Cable` trait.
 
 use alloc::{boxed::Box, format, string::String, vec::Vec};
+#[cfg(feature = "std")]
 pub mod mpsse;
 #[cfg(feature = "std")]
 pub mod ft232r;

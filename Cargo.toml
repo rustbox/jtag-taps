@@ -10,10 +10,10 @@ repository = "https://github.com/srwalter/jtag-taps"
 
 [dependencies]
 libftd2xx = { version = "0.32", optional = true} 
-ftdi-mpsse = "0.1"
+ftdi-mpsse = { version = "0.1", optional = true}
 rusb = {version = "0.9.3", optional = true}
 embedded-hal = "1.0.0"
 
 [features]
-std = ["dep:libftd2xx", "dep:rusb"]
+std = ["dep:libftd2xx", "dep:rusb", "dep:ftdi-mpsse"]
 default = ["std"]
